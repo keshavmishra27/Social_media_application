@@ -90,8 +90,21 @@ def delete_post(id:int):
     #step1=> find teh ides in the list having required id:
     #step=?my_post.pop(indes)
     indes=find_indes(id)
-    print(indes) 
+    print(indes)
+    if indes==None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with id {id} not found") 
     my_post.pop(indes)
     return {"message":f"post with id {id} deleted successfully"}
 
     
+@app.put("/update_post/{id}")#user sends request to update a post
+def update(id: int,post:post):
+    indes=find_indes(id)#indes of the post will be checked in my_post
+    if indes==None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with id {id} not found")
+
+    post_dict=post.dict()#store the updated data in the form of dictionary
+    post_dict['id']=id
+    my_post[indes]=post_dict
+
+    return {"data":post_dict}
