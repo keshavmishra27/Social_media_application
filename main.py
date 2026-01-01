@@ -77,3 +77,21 @@ def get_post_specific(id:int,response:Response):#validation check for id to be a
 def get_latest_post():
     latest_post=my_post[len(my_post)-1]
     return{"latest post":latest_post}
+
+def find_indes(id):
+    for i,p in enumerate(my_post):
+        if p['id']==id:
+            return i
+
+#delete a post
+@app.delete("/delete_post/{id}")
+def delete_post(id:int):
+    #logic for deleting post
+    #step1=> find teh ides in the list having required id:
+    #step=?my_post.pop(indes)
+    indes=find_indes(id)
+    print(indes) 
+    my_post.pop(indes)
+    return {"message":f"post with id {id} deleted successfully"}
+
+    
