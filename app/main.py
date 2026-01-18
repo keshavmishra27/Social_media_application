@@ -1,25 +1,35 @@
-from hmac import new
 import random
-from telnetlib import STATUS
 from typing import Optional
-from fastapi import FastAPI,Response,status,HTTPException
+from fastapi import FastAPI,Response,status,HTTPException,Depends
 from fastapi.params import Body
 from pydantic import BaseModel
 from random import randrange
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from time import sleep
+# will be using session from sqlalchemey
+from sqlalchemy.orm import Session
+from .MODELS import post
+from Social_media_application.app import database
 
 #making schema
 class post(BaseModel):
     title:str
     content:str
     published:bool=False
-    rating:Optional[int]=None
     #no need of geberating id here as it will be generated in the create post function
+
+
+#connect your db model
+from . import MODELS #. refers to current directory
+from .database import engine,get_db
+
+database.base.metadata.create_all(bind=engine)
+
 #name your app
 
 app=FastAPI()
+
 
 #connecting our database
 while True:
@@ -41,13 +51,24 @@ while True:
 def root():
     return {'message':'Hello, this is my first fastAPI project'}#fastapi converts dict to json
 
-my_post=[{"title":"title of post 1","content":"content of post 1","id":1},
-         {"title":"title of post 2","content":"content of post 2","id":2}]
+# my_post=[{"title":"title of post 1","content":"content of post 1","id":1},
+#          {"title":"title of post 2","content":"content of post 2","id":2}]
+
+@app.get("/sqlalchemy")
+def  test_posts(db:Session=Depends(get_db)):
+    # queryofpost=db.query(MODELS.post)
+    # print(queryofpost)
+    posts=db.query(MODELS.post).all()
+    return{"data":posts}
+
+
 
 @app.get("/post")
-def get_post():
-    cursor.execute("""SELECT *from posts """)
-    posts=cursor.fetchall()
+def get_post(db:Session=Depends(get_db)):
+    # cursor.execute("""SELECT *from posts """)
+    # posts=cursor.fetchall()
+    #optimized method by using orm below
+    posts=db.query(MODELS.post).all()
     return {"data":posts}
 
 #integrate postman body with fastapi
@@ -61,21 +82,30 @@ def create_post(new_post:dict=Body(...)):
 '''
 
 @app.post("/create_post",status_code=status.HTTP_201_CREATED)
-def create_post(post:post):
-    cursor.execute(""" INSERT INTO posts (title,content,published)
-                    VALUES(%s,%s,%s) RETURNING * """,(post.title,
-                                                      post.content
-                                                      ,post.published))
-    created_post=cursor.fetchone()
-    conn.commit()
+def create_post(post:post,db:Session=Depends(get_db)):
+    # cursor.execute(""" INSERT INTO posts (title,content,published)
+    #                 VALUES(%s,%s,%s) RETURNING * """,(post.title,
+    #                                                   post.content
+    #                                                   ,post.published))
+    # created_post=cursor.fetchone()
+    # conn.commit()
+    #long way
+    #created_post=MODELS.post(title=post.title,content=post.content,published=post.published)
+    #alternate short optimized way
+    #print(**post.dict())
+    created_post=MODELS.post(**post.dict())#unpacking dictionary using ** {used for pydantic classes}
+    #add and commit to the database
+    db.add(created_post)
+    db.commit()
+    db.refresh(created_post)#to get the created post back with id
     return{"data":created_post}# will get a value error if  atleast oen part ios missing
 
 #brutforce method for getting sp[ecific post
 
-def find_post(id):
-    for p in my_post:
-        if p["id"]==id:
-            return p
+# def find_post(id):
+#     for p in my_post:
+#         if p["id"]==id:
+#             return p
         
 
 
@@ -109,15 +139,15 @@ def get_post_specific(id:int,response:Response):#validation check for id to be a
     #     return {"alert!":f"post with id {id} not found"}
 
 #get latest post
-@app.get("/latest_post")
-def get_latest_post():
-    latest_post=my_post[len(my_post)-1]
-    return{"latest post":latest_post}
+# @app.get("/latest_post")
+# def get_latest_post():
+    #latest_post=my_post[len(my_post)-1]
+    #return{"latest post":latest_post}
 
-def find_indes(id):
-    for i,p in enumerate(my_post):
-        if p['id']==id:
-            return i
+# def find_indes(id):
+#     for i,p in enumerate(my_post):
+#         if p['id']==id:
+#             return i
 
 #delete a post
 @app.delete("/delete_post/{id}")
