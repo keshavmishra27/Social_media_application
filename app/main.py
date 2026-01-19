@@ -1,5 +1,8 @@
+from http.client import responses
+from multiprocessing.sharedctypes import synchronized
 import random
 from typing import Optional
+from urllib import response
 from fastapi import FastAPI,Response,status,HTTPException,Depends
 from fastapi.params import Body
 from pydantic import BaseModel
@@ -82,7 +85,7 @@ def create_post(new_post:dict=Body(...)):
 '''
 
 @app.post("/create_post",status_code=status.HTTP_201_CREATED)
-def create_post(post:post,db:Session=Depends(get_db)):
+def create_post(id:int,post:post,db:Session=Depends(get_db)):
     # cursor.execute(""" INSERT INTO posts (title,content,published)
     #                 VALUES(%s,%s,%s) RETURNING * """,(post.title,
     #                                                   post.content
@@ -110,22 +113,38 @@ def create_post(post:post,db:Session=Depends(get_db)):
 
 
 @app.get("/post/{id}")
-def get_post_specific(id:int,response:Response):#validation check for id to be an integer
+def get_post_specific(id:int,db:Session=Depends(get_db)):#validation check for id to be an integer
+    """
+    NOTE 
+    FastAPI sees db: Session = get_db and assumes:
 
-    cursor.execute(""" SELECT id from posts""")
-    all_id=cursor.fetchall()
-    id_list=[]
-    for ids in all_id:
-        id_list.append(ids['id'])
+“Oh, Session is a request/response field that needs Pydantic validation.”
 
-    if id in id_list:
-        cursor.execute(""" SELECT * from posts WHERE id=%s """,(str(id),))
-        post=cursor.fetchone()
-        return{"post details":post}
-    
-    else:
+But sqlalchemy.orm.session.Session:
+
+❌ is not a Pydantic type
+
+❌ is not JSON serializable
+
+❌ should NEVER be treated as request/response data
+    """
+
+    # cursor.execute(""" SELECT id from posts""")
+    # all_id=cursor.fetchall()
+    # id_list=[]
+    # for ids in all_id:
+    #     id_list.append(ids['id'])
+
+    # if id in id_list:
+    #     cursor.execute(""" SELECT * from posts WHERE id=%s """,(str(id),))
+    #     post=cursor.fetchone()
+
+    post=db.query(MODELS.post).filter(MODELS.post.id==id).first() #.first to get only one post
+    if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"post with id {id} not found")
+    
+    return{"post details":post}
 
     # print(id)
     # post = find_post(id)#alternate method=> in basemodel id type is int and here in request id type is str so we need to convert
@@ -151,33 +170,47 @@ def get_post_specific(id:int,response:Response):#validation check for id to be a
 
 #delete a post
 @app.delete("/delete_post/{id}")
-def delete_post(id:int):
+def delete_post(id:int,post:post,db:Session=Depends(get_db)):
     #logic for deleting post
     #step1=> find teh ides in the list having required id:
     #step=?my_post.pop(indes)
-    cursor.execute(""" DELETE FROM posts WHERE id=%s RETURNING * """,(str(id),))
-    deleted_post=cursor.fetchone()
-    conn.commit()
+    # cursor.execute(""" DELETE FROM posts WHERE id=%s RETURNING * """,(str(id),))
+    # deleted_post=cursor.fetchone()
+    # conn.commit()
+
+    deleted_post=db.query(MODELS.post).filter(MODELS.post.id==id)
     if deleted_post==None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"post with id {id} not found") 
+    else:
+        deleted_post.delete(synchronize_session=False)
+
+        db.commit()
     return {"message":f"post with id {id} deleted successfully"}
 
     
 @app.put("/update_post/{id}")#user sends request to update a post
-def update(id: int,post:post):
+def update(id: int, post:post,db:Session=Depends(get_db)):
     #indes=find_indes(id)#indes of the post will be checked in my_post
-    cursor.execute(""" UPDATE posts SET title=%s, content=%s,
-                    published=%s WHERE id=%s RETURNING * """,
-                   (post.title,post.content,post.published,str(id)))
-    updated_post=cursor.fetchone()
-    conn.commit()
-    if updated_post==None:
+    # cursor.execute(""" UPDATE posts SET title=%s, content=%s,
+    #                 published=%s WHERE id=%s RETURNING * """,
+    #                (post.title,post.content,post.published,str(id)))
+    # updated_post=cursor.fetchone()
+    # conn.commit()
+    updated_post=db.query(MODELS.post).filter(MODELS.post.id==id)
+    posted=updated_post.first()
+    if posted==None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"post with id {id} not found")
+    
+    else:
+ 
+        updated_post.update(post.dict(),synchronize_session=False)
+        db.commit()
 
     # post_dict=post.dict()#store the updated data in the form of dictionary
     # post_dict['id']=id
     # my_post[indes]=post_dict
 
-    return {"data":updated_post}
+    return {"data":updated_post.first()}# if written update_post reccursion errror will occur
+
